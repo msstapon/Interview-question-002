@@ -1,0 +1,18 @@
+# Normalize line endings. Scripts/config that run on Linux must stay LF even when
+# committed from Windows, or bash/nginx/caddy will choke on CR characters.
+* text=auto
+
+*.sh          text eol=lf
+*.yml         text eol=lf
+*.yaml        text eol=lf
+Dockerfile    text eol=lf
+Caddyfile     text eol=lf
+nginx.conf    text eol=lf
+*.go          text eol=lf
+go.mod        text eol=lf
+go.sum        text eol=lf
+
+# Binary assets — never touch
+*.png binary
+*.jpg binary
+*.pem binary
