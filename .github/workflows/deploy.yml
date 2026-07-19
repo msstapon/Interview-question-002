@@ -119,7 +119,10 @@ jobs:
           script: |
             set -euo pipefail
             cd /opt/interview-question-002/deployments/docker
-            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
+            # Only log in when a token is provided; public GHCR packages need no login.
+            if [ -n "${{ secrets.GHCR_TOKEN }}" ]; then
+              echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
+            fi
             export GHCR_OWNER="${{ github.repository_owner }}"
             export TAG="${{ github.sha }}"
             for i in 1 2 3; do
