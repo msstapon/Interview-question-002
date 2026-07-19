@@ -1,0 +1,14 @@
+node_modules
+dist
+.git
+.gitignore
+Dockerfile
+.dockerignore
+# exclude .env so the build uses the VITE_API_BASE_URL build-arg, not a local file
+.env
+.env.*
+!.env.example
+npm-debug.log*
+*.md
+.vscode
+.idea

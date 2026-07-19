@@ -1,0 +1,33 @@
+# Reverse proxy for interview-question-002.
+# SITE_ADDRESS is provided by the compose file:
+#   - a domain (app.example.com)  → Caddy obtains a Let's Encrypt cert automatically
+#   - ":80"                        → plain HTTP (deploy by IP, no domain)
+#
+# Single origin: /api/* + /healthz + /readyz go to the Go backend, everything else
+# to the Vue SPA (nginx). Same-origin means the browser needs no CORS.
+
+{$SITE_ADDRESS::80} {
+	encode gzip zstd
+
+	@api path /api/* /healthz /readyz
+	handle @api {
+		reverse_proxy api:8080
+	}
+
+	handle {
+		reverse_proxy frontend:80
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

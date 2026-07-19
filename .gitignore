@@ -1,0 +1,28 @@
+# Repo-wide safety net (backend/ and frontend/ also have their own .gitignore).
+
+# secrets & env — NEVER commit
+**/.env
+**/.env.*
+!**/.env.example
+!.env.deploy.example
+**/secrets/
+*.pem
+*.key
+
+# dependencies & build output
+**/node_modules/
+**/dist/
+backend/tmp/
+backend/bin/
+
+# test / coverage
+coverage.out
+coverage.html
+*.test
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

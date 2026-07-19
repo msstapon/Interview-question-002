@@ -1,0 +1,110 @@
+name: interview-question-002
+
+# Production stack (deployed to the VPS by .github/workflows/deploy.yml).
+# Images are pulled from GHCR; source is NOT needed on the VPS — only this file,
+# ../caddy/Caddyfile, and a .env placed next to this file.
+#
+#   Layout on the VPS: /opt/interview-question-002/
+#     deployments/docker/docker-compose.yml   (this file)
+#     deployments/docker/.env                  (secrets — see .env.deploy.example)
+#     deployments/caddy/Caddyfile
+#
+# GHCR_OWNER and TAG are exported by the deploy workflow; defaults let you run
+# `docker compose up` manually too.
+
+x-backend-image: &backend-image
+  image: ghcr.io/${GHCR_OWNER:-msstapon}/interview-question-002-backend:${TAG:-latest}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: iq002-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Not published to the host — only reachable on the internal docker network.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [appnet]
+
+  # One-shot: generate the RS256 JWT keypair into the shared volume (idempotent —
+  # keeps existing keys). Runs before api.
+  keygen:
+    <<: *backend-image
+    container_name: iq002-keygen
+    entrypoint: ["/app/keys"]
+    volumes:
+      - secrets:/app/secrets
+    restart: "no"
+
+  # One-shot: apply pending migrations, then exit 0. Runs before api.
+  migrate:
+    <<: *backend-image
+    container_name: iq002-migrate
+    entrypoint: ["/app/migrate", "up"]
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [appnet]
+    restart: "no"
+
+  api:
+    <<: *backend-image
+    container_name: iq002-api
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - secrets:/app/secrets:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      keygen:
+        condition: service_completed_successfully
+    networks: [appnet]
+
+  frontend:
+    image: ghcr.io/${GHCR_OWNER:-msstapon}/interview-question-002-frontend:${TAG:-latest}
+    container_name: iq002-frontend
+    restart: unless-stopped
+    networks: [appnet]
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: iq002-caddy
+    restart: unless-stopped
+    ports:
+      # Override HTTP_PORT/HTTPS_PORT in .env if 80/443 are taken (e.g. keyvc's Caddy
+      # already runs on this VPS). Note: ACME HTTP-01 needs public :80 — if you remap,
+      # use a domain with DNS-01, or front this stack with the existing reverse proxy.
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    environment:
+      # A domain (e.g. app.example.com) → automatic HTTPS.
+      # ":80" → plain HTTP on the VPS IP (no domain / no TLS).
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    volumes:
+      - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on: [api, frontend]
+    networks: [appnet]
+
+volumes:
+  pgdata:
+  secrets:
+  caddydata:
+  caddyconfig:
+
+networks:
+  appnet:
+    driver: bridge

@@ -1,0 +1,21 @@
+# secrets & env — never bake into the image
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.key
+
+# build artifacts / vcs / tooling
+tmp/
+bin/
+dist/
+.git
+.gitignore
+Dockerfile
+.dockerignore
+Makefile
+*.md
+coverage.out
+coverage.html
+*.test

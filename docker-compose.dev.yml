@@ -1,0 +1,103 @@
+name: interview-question-002-dev
+
+# Local full-stack test — builds images from source (no GHCR, no SSH tunnel needed).
+#   docker compose -f docker-compose.dev.yml up --build
+# then open http://localhost:8080
+#
+# For hot-reload development instead, run backend (`go run ./cmd/api`) and frontend
+# (`npm run dev`) directly — see README.
+
+x-app-env: &app-env
+  APP_ENV: development
+  APP_PORT: "8080"
+  APP_NAME: interview-question-002
+  APP_ALLOWED_ORIGINS: http://localhost:8088
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_USER: keyvc
+  DB_PASSWORD: keyvc_dev_password
+  DB_NAME: test_tcc
+  DB_SSLMODE: disable
+  JWT_PRIVATE_KEY_PATH: ./secrets/jwt_private.pem
+  JWT_PUBLIC_KEY_PATH: ./secrets/jwt_public.pem
+  JWT_ACCESS_TTL: 60m
+  JWT_ISSUER: example.com
+  LOG_LEVEL: info
+  LOG_FORMAT: console
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: keyvc
+      POSTGRES_PASSWORD: keyvc_dev_password
+      POSTGRES_DB: test_tcc
+    ports:
+      # host 5434 to avoid clashing with a local Postgres / keyvc (5432) / the SSH tunnel (5433)
+      - "5434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keyvc -d test_tcc"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [appnet]
+
+  keygen:
+    build: { context: ./backend }
+    entrypoint: ["/app/keys"]
+    volumes:
+      - secrets:/app/secrets
+    restart: "no"
+
+  migrate:
+    build: { context: ./backend }
+    entrypoint: ["/app/migrate", "up"]
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [appnet]
+    restart: "no"
+
+  api:
+    build: { context: ./backend }
+    environment: *app-env
+    volumes:
+      - secrets:/app/secrets:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      keygen:
+        condition: service_completed_successfully
+    networks: [appnet]
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: /api/v1
+    networks: [appnet]
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      # host 8088 to avoid clashing with keyvc dev / a local `go run ./cmd/api` on 8080
+      - "8088:80"
+    environment:
+      SITE_ADDRESS: ":80"
+    volumes:
+      - ./deployments/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on: [api, frontend]
+    networks: [appnet]
+
+volumes:
+  pgdata:
+  secrets:
+
+networks:
+  appnet:
+    driver: bridge
